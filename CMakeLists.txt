@@ -1,7 +1,6 @@
 SET(PROJECT_NAME DSO)
-
 PROJECT(${PROJECT_NAME})
-CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
 
@@ -17,23 +16,16 @@ find_package(SuiteParse REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 # optional libraries
-find_package(LibZip QUIET)
 find_package(Pangolin 0.2 QUIET)
-find_package(OpenCV QUIET)
+find_package(OpenCV 3.4 QUIET)
 
 # flags
-add_definitions("-DENABLE_SSE")
 set(CMAKE_CXX_FLAGS
-   "${SSE_FLAGS} -O3 -g -march=native"
-#   "${SSE_FLAGS} -O3 -g -std=c++0x -fno-omit-frame-pointer"
-)
+  "-O3 -g -march=native"
+  )
 
-if (MSVC)
-     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
-endif (MSVC)
-
-# use c++11 standard
-set (CMAKE_CXX_STANDARD 11)
+# use c++17 standard
+set (CMAKE_CXX_STANDARD 17)
 
 # Sources files
 set(dso_SOURCE_FILES
@@ -55,7 +47,7 @@ set(dso_SOURCE_FILES
   ${PROJECT_SOURCE_DIR}/src/util/settings.cpp
   ${PROJECT_SOURCE_DIR}/src/util/Undistort.cpp
   ${PROJECT_SOURCE_DIR}/src/util/globalCalib.cpp
-)
+  )
 
 
 
@@ -64,14 +56,14 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/thirdparty/Sophus
   ${PROJECT_SOURCE_DIR}/thirdparty/sse2neon
   ${EIGEN3_INCLUDE_DIR}
-) 
+  )
 
 
 # decide if we have pangolin
 if (Pangolin_FOUND)
 	message("--- found PANGOLIN, compiling dso_pangolin library.")
-	include_directories( ${Pangolin_INCLUDE_DIRS} ) 
-	set(dso_pangolin_SOURCE_FILES 
+	include_directories( ${Pangolin_INCLUDE_DIRS} )
+	set(dso_pangolin_SOURCE_FILES
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/Pangolin/KeyFrameDisplay.cpp
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/Pangolin/PangolinDSOViewer.cpp)
 	set(HAS_PANGOLIN 1)
@@ -86,14 +78,16 @@ endif ()
 if (OpenCV_FOUND)
 	message("--- found OpenCV, compiling dso_opencv library.")
 	include_directories( ${OpenCV_INCLUDE_DIRS} )
-	set(dso_opencv_SOURCE_FILES 
+  message(${OpenCV_INCLUDE_DIRS})
+  message("${OpenCV_LIBS}")
+	set(dso_opencv_SOURCE_FILES
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/OpenCV/ImageDisplay_OpenCV.cpp
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/OpenCV/ImageRW_OpenCV.cpp)
 	set(HAS_OPENCV 1)
 else ()
 	message("--- could not find OpenCV, not compiling dso_opencv library.")
 	message("    this means there will be no image display, and image read / load functionality.")
-	set(dso_opencv_SOURCE_FILES 
+	set(dso_opencv_SOURCE_FILES
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/ImageDisplay_dummy.cpp
 	  ${PROJECT_SOURCE_DIR}/src/IOWrapper/ImageRW_dummy.cpp)
 	set(HAS_OPENCV 0)
@@ -103,25 +97,25 @@ endif ()
 if (LIBZIP_LIBRARY)
 	message("--- found ziplib (${LIBZIP_VERSION}), compiling with zip capability.")
 	add_definitions(-DHAS_ZIPLIB=1)
-	include_directories( ${LIBZIP_INCLUDE_DIR_ZIP} ${LIBZIP_INCLUDE_DIR_ZIPCONF} ) 
+	include_directories( ${LIBZIP_INCLUDE_DIR_ZIP} ${LIBZIP_INCLUDE_DIR_ZIPCONF} )
 else()
 	message("--- not found ziplib (${LIBZIP_LIBRARY}), compiling without zip capability.")
 	set(LIBZIP_LIBRARY "")
 endif()
 
-
 # compile main library.
-include_directories( ${CSPARSE_INCLUDE_DIR} ${CHOLMOD_INCLUDE_DIR}) 
-add_library(dso ${dso_SOURCE_FILES} ${dso_opencv_SOURCE_FILES} ${dso_pangolin_SOURCE_FILES})
+include_directories( ${CSPARSE_INCLUDE_DIR} ${CHOLMOD_INCLUDE_DIR})
+add_library(dso SHARED
+  ${dso_SOURCE_FILES} ${dso_opencv_SOURCE_FILES} ${dso_pangolin_SOURCE_FILES})
+target_link_libraries(dso PUBLIC ${CSPARSE_LIBRARY} ${LIBZIP_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
 
-#set_property( TARGET dso APPEND_STRING PROPERTY COMPILE_FLAGS -Wall )
+# set_property( TARGET dso APPEND_STRING PROPERTY COMPILE_FLAGS -Wall )
 
 # build main executable (only if we have both OpenCV and Pangolin)
 if (OpenCV_FOUND AND Pangolin_FOUND)
-	message("--- compiling dso_dataset.")
-	add_executable(dso_dataset ${PROJECT_SOURCE_DIR}/src/main_dso_pangolin.cpp )
-    target_link_libraries(dso_dataset dso cxsparse ${LIBZIP_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
+ 	message("--- compiling dso_dataset.")
+  add_executable(dso_dataset ${PROJECT_SOURCE_DIR}/src/main_dso_pangolin.cpp )
+  target_link_libraries(dso_dataset dso ${CSPARSE_LIBRARY} ${LIBZIP_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
 else()
-	message("--- not building dso_dataset, since either don't have openCV or Pangolin.")
+ 	message("--- not building dso_dataset, since either don't have openCV or Pangolin.")
 endif()
-
