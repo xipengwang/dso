@@ -22,7 +22,9 @@
  */
 
 #include <atomic>
+#include <cstddef>
 #include <locale.h>
+#include <memory>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,8 +32,13 @@
 #include <thread>
 #include <unistd.h>
 
+#include <opencv2/core/core.hpp>
+#include <vector>
+
 #include "IOWrapper/ImageDisplay.h"
 #include "IOWrapper/Output3DWrapper.h"
+
+#include "util/NumType.h"
 
 #include "util/DatasetReader.h"
 #include "util/globalCalib.h"
@@ -41,34 +48,161 @@
 #include "FullSystem/FullSystem.h"
 #include "FullSystem/PixelSelector2.h"
 #include "OptimizationBackend/MatrixAccumulators.h"
-#include "util/NumType.h"
 
 #include "IOWrapper/OutputWrapper/SampleOutputWrapper.h"
 #include "IOWrapper/Pangolin/PangolinDSOViewer.h"
 
-std::string vignette = "";
-std::string gammaCalib = "";
-std::string source = "";
-std::string calib = "";
-double rescale = 1;
-bool reverse = false;
-bool disableROS = false;
-int start = 0;
-int end = 100000;
-bool prefetch = false;
-float playbackSpeed =
-    0; // 0 for linearize (play as fast as possible, while sequentializing
-       // tracking & mapping). otherwise, factor on timestamps.
-bool preload = false;
+namespace {
+
+class Config {
+public:
+  static void SetParameterFile(const std::string &filename) {
+    if (config_ == nullptr)
+      config_ = std::shared_ptr<Config>(new Config);
+    config_->file_ = cv::FileStorage(filename.c_str(), cv::FileStorage::READ);
+    if (config_->file_.isOpened() == false) {
+      std::cerr << "Parameter file " << filename << " does not exist."
+                << std::endl;
+      config_->file_.release();
+      std::terminate();
+    }
+  }
+  template <typename T>
+  static std::optional<T> MaybeGet(const std::string &key) {
+    const auto &file_node = Config::config_->file_[key];
+    if (file_node.empty()) {
+      std::cerr << "Can't find key: " << key << "\n";
+      return std::nullopt;
+    }
+    return std::optional<T>(static_cast<T>(file_node));
+  }
+  ~Config() {
+    if (file_.isOpened())
+      file_.release();
+  }
+
+private:
+  static std::shared_ptr<Config> config_;
+  cv::FileStorage file_;
+};
+
+std::shared_ptr<Config> Config::config_ = nullptr;
+
+static const char *kVignettePathKey = "vignette_path";
+static const char *kImagesPathKey = "images_path";
+static const char *kCameraCalibPathKey = "camera_calib_path";
+static const char *kGammaCalibPathKey = "gamma_calib_path";
+static const char *kReversePlayKey = "reverse_play";
+static const char *kRunQuiet = "run_quiet";
+static const char *kStartFrameIdx = "start_frame_idx";
+static const char *kEndFrameIdx = "end_frame_idx";
+static const char *kLoadAllImagesOnce = "load_all_images_once";
+static const char *kLogging = "logging";
+static const char *kDisableDisplay = "disable_display";
+static const char *kMultiThreading = "multi_threading";
+static const char *kSaveDebugImage = "save_debug_images";
+
+struct Options {
+  std::string images_path = "";
+  std::string vignette_path = "";
+  std::string camera_calib_path = "";
+  std::string gamma_calib_path = "";
+
+  bool reverse_play = false;
+  // Start from 0, inclusive.
+  int start_frame_idx = 0;
+  // Exclusive.
+  int end_frame_idx = 10000;
+  bool load_all_images_once = false;
+
+  bool setting_debugout_runquiet = true;
+  bool setting_log_stuff = false;
+  bool setting_disable_display = false;
+  bool setting_multi_threading = true;
+};
+
+Options ParseConfig(const std::string &config_path) {
+  Options options;
+  Config::SetParameterFile(config_path);
+  const auto maybe_images_path = Config::MaybeGet<std::string>(kImagesPathKey);
+  if (maybe_images_path.has_value()) {
+    options.images_path = maybe_images_path.value();
+  }
+  const auto maybe_vignette_path =
+      Config::MaybeGet<std::string>(kVignettePathKey);
+  if (maybe_vignette_path.has_value()) {
+    options.vignette_path = maybe_vignette_path.value();
+  }
+  const auto maybe_camera_calib_path =
+      Config::MaybeGet<std::string>(kCameraCalibPathKey);
+  if (maybe_camera_calib_path.has_value()) {
+    options.camera_calib_path = maybe_camera_calib_path.value();
+  }
+  const auto maybe_gamma_calib_path =
+      Config::MaybeGet<std::string>(kGammaCalibPathKey);
+  if (maybe_gamma_calib_path.has_value()) {
+    options.gamma_calib_path = maybe_gamma_calib_path.value();
+  }
+  const auto maybe_reverse_play = Config::MaybeGet<int>(kReversePlayKey);
+  if (maybe_reverse_play.has_value()) {
+    options.reverse_play = static_cast<bool>(maybe_reverse_play.value());
+  }
+  const auto maybe_run_quiet = Config::MaybeGet<int>(kRunQuiet);
+  if (maybe_run_quiet.has_value()) {
+    options.setting_debugout_runquiet =
+        static_cast<bool>(maybe_run_quiet.value());
+  }
+  const auto maybe_start_frame_idx = Config::MaybeGet<int>(kStartFrameIdx);
+  if (maybe_start_frame_idx.has_value()) {
+    options.start_frame_idx = std::max(0, maybe_start_frame_idx.value());
+  }
+  const auto maybe_end_frame_idx = Config::MaybeGet<int>(kEndFrameIdx);
+  if (maybe_end_frame_idx.has_value()) {
+    options.end_frame_idx = maybe_end_frame_idx.value();
+  }
+  const auto maybe_load_all_images_once =
+      Config::MaybeGet<int>(kLoadAllImagesOnce);
+  if (maybe_load_all_images_once.has_value()) {
+    options.load_all_images_once =
+        static_cast<bool>(maybe_load_all_images_once.value());
+  }
+  const auto maybe_setting_log_stuff = Config::MaybeGet<int>(kLogging);
+  if (maybe_setting_log_stuff.has_value()) {
+    options.setting_log_stuff =
+        static_cast<bool>(maybe_setting_log_stuff.value());
+  }
+  const auto maybe_disable_display_stuff =
+      Config::MaybeGet<int>(kDisableDisplay);
+  if (maybe_disable_display_stuff.has_value()) {
+    options.setting_disable_display =
+        static_cast<bool>(maybe_disable_display_stuff.value());
+  }
+  const auto maybe_multi_threading = Config::MaybeGet<int>(kMultiThreading);
+  if (maybe_multi_threading.has_value()) {
+    options.setting_multi_threading =
+        static_cast<bool>(maybe_multi_threading.value());
+  }
+  return options;
+}
+
+void ConfigDsoSettings(const Options &options) {
+  // See in util/settings.h.
+  setting_debugout_runquiet = options.setting_debugout_runquiet;
+  setting_logStuff = options.setting_log_stuff;
+  disableAllDisplay = options.setting_disable_display;
+  multiThreading = options.setting_multi_threading;
+}
+
+} // namespace
+
+// 0 for linearize (play as fast as possible, while sequentializing
+// tracking & mapping). otherwise, factor on timestamps.
+float playbackSpeed = 0;
 bool useSampleOutput = false;
 
 std::atomic<bool> exThreadKeepRunning(true);
 
 int mode = 0;
-
-bool firstRosSpin = false;
-
-using namespace dso;
 
 void my_exit_handler(int s) {
   printf("Caught signal %d\n", s);
@@ -82,7 +216,6 @@ void exitThread() {
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  firstRosSpin = true;
   while (exThreadKeepRunning) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
@@ -100,7 +233,6 @@ void settingsDefault(int preset) {
            preset == 0 ? "no " : "1x");
 
     playbackSpeed = (preset == 0 ? 0 : 1);
-    preload = preset == 1;
     setting_desiredImmatureDensity = 1500;
     setting_desiredPointDensity = 2000;
     setting_minFrames = 5;
@@ -121,7 +253,6 @@ void settingsDefault(int preset) {
            preset == 0 ? "no " : "5x");
 
     playbackSpeed = (preset == 2 ? 0 : 5);
-    preload = preset == 3;
     setting_desiredImmatureDensity = 600;
     setting_desiredPointDensity = 800;
     setting_minFrames = 4;
@@ -151,109 +282,8 @@ void parseArgument(char *arg) {
     return;
   }
 
-  if (1 == sscanf(arg, "quiet=%d", &option)) {
-    if (option == 1) {
-      setting_debugout_runquiet = true;
-      printf("QUIET MODE, I'll shut up!\n");
-    }
-    return;
-  }
-
   if (1 == sscanf(arg, "preset=%d", &option)) {
     settingsDefault(option);
-    return;
-  }
-
-  if (1 == sscanf(arg, "rec=%d", &option)) {
-    if (option == 0) {
-      disableReconfigure = true;
-      printf("DISABLE RECONFIGURE!\n");
-    }
-    return;
-  }
-
-  if (1 == sscanf(arg, "noros=%d", &option)) {
-    if (option == 1) {
-      disableROS = true;
-      disableReconfigure = true;
-      printf("DISABLE ROS (AND RECONFIGURE)!\n");
-    }
-    return;
-  }
-
-  if (1 == sscanf(arg, "nolog=%d", &option)) {
-    if (option == 1) {
-      setting_logStuff = false;
-      printf("DISABLE LOGGING!\n");
-    }
-    return;
-  }
-  if (1 == sscanf(arg, "reverse=%d", &option)) {
-    if (option == 1) {
-      reverse = true;
-      printf("REVERSE!\n");
-    }
-    return;
-  }
-  if (1 == sscanf(arg, "nogui=%d", &option)) {
-    if (option == 1) {
-      disableAllDisplay = true;
-      printf("NO GUI!\n");
-    }
-    return;
-  }
-  if (1 == sscanf(arg, "nomt=%d", &option)) {
-    if (option == 1) {
-      multiThreading = false;
-      printf("NO MultiThreading!\n");
-    }
-    return;
-  }
-  if (1 == sscanf(arg, "prefetch=%d", &option)) {
-    if (option == 1) {
-      prefetch = true;
-      printf("PREFETCH!\n");
-    }
-    return;
-  }
-  if (1 == sscanf(arg, "start=%d", &option)) {
-    start = option;
-    printf("START AT %d!\n", start);
-    return;
-  }
-  if (1 == sscanf(arg, "end=%d", &option)) {
-    end = option;
-    printf("END AT %d!\n", start);
-    return;
-  }
-
-  if (1 == sscanf(arg, "files=%s", buf)) {
-    source = buf;
-    printf("loading data from %s!\n", source.c_str());
-    return;
-  }
-
-  if (1 == sscanf(arg, "calib=%s", buf)) {
-    calib = buf;
-    printf("loading calibration from %s!\n", calib.c_str());
-    return;
-  }
-
-  if (1 == sscanf(arg, "vignette=%s", buf)) {
-    vignette = buf;
-    printf("loading vignette from %s!\n", vignette.c_str());
-    return;
-  }
-
-  if (1 == sscanf(arg, "gamma=%s", buf)) {
-    gammaCalib = buf;
-    printf("loading gammaCalib from %s!\n", gammaCalib.c_str());
-    return;
-  }
-
-  if (1 == sscanf(arg, "rescale=%f", &foption)) {
-    rescale = foption;
-    printf("RESCALE %f!\n", rescale);
     return;
   }
 
@@ -310,49 +340,53 @@ void parseArgument(char *arg) {
   printf("could not parse argument \"%s\"!!!!\n", arg);
 }
 
-int main(int argc, char **argv) {
-  // setlocale(LC_ALL, "");
+namespace dso {
+int Main(int argc, char **argv) {
   for (int i = 1; i < argc; i++)
     parseArgument(argv[i]);
+  const auto options = ParseConfig(argv[1]);
+  ConfigDsoSettings(options);
 
-  // hook crtl+C.
+  // Hook crtl+C.
   std::thread exThread(exitThread);
 
-  ImageFolderReader *reader =
-      new ImageFolderReader(source, calib, gammaCalib, vignette);
+  std::unique_ptr<ImageFolderReader> reader(
+      new ImageFolderReader(options.images_path, options.camera_calib_path,
+                            options.gamma_calib_path, options.vignette_path));
+
   reader->setGlobalCalibration();
 
   if (setting_photometricCalibration > 0 &&
       reader->getPhotometricGamma() == 0) {
-    printf("ERROR: don't have photometric calibration. Need to use "
-           "command-line options mode=1 or mode=2 ");
+    std::cerr << "ERROR: don't have photometric calibration. "
+              << "Need to use command line options mode = 1 or mode = 2 \n ";
     exit(1);
   }
 
-  int lstart = start;
-  int lend = end;
+  int lstart = options.start_frame_idx;
+  int lend = options.end_frame_idx;
   int linc = 1;
-  if (reverse) {
-    printf("REVERSE!!!!");
-    lstart = end - 1;
+  if (options.reverse_play) {
+    lstart = options.end_frame_idx - 1;
     if (lstart >= reader->getNumImages())
       lstart = reader->getNumImages() - 1;
-    lend = start;
+    lend = options.start_frame_idx;
     linc = -1;
   }
 
-  FullSystem *fullSystem = new FullSystem();
+  std::unique_ptr<FullSystem> fullSystem(new FullSystem());
   fullSystem->setGammaFunction(reader->getPhotometricGamma());
   fullSystem->linearizeOperation = (playbackSpeed == 0);
 
-  IOWrap::PangolinDSOViewer *viewer = 0;
+  IOWrap::PangolinDSOViewer *viewer = nullptr;
   if (!disableAllDisplay) {
     viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
     fullSystem->outputWrapper.push_back(viewer);
   }
 
-  if (useSampleOutput)
+  if (useSampleOutput) {
     fullSystem->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
+  }
 
   // to make MacOS happy: run this in dedicated thread -- and use this one to
   // run the GUI.
@@ -374,7 +408,7 @@ int main(int argc, char **argv) {
     }
 
     std::vector<ImageAndExposure *> preloadedImages;
-    if (preload) {
+    if (options.load_all_images_once) {
       printf("LOADING ALL IMAGES!\n");
       for (int ii = 0; ii < (int)idsToPlay.size(); ii++) {
         int i = idsToPlay[ii];
@@ -398,7 +432,7 @@ int main(int argc, char **argv) {
       int i = idsToPlay[ii];
 
       ImageAndExposure *img;
-      if (preload)
+      if (options.load_all_images_once)
         img = preloadedImages[ii];
       else
         img = reader->getImage(i);
@@ -420,7 +454,6 @@ int main(int argc, char **argv) {
           skipFrame = true;
         }
       }
-
       if (!skipFrame)
         fullSystem->addActiveFrame(img, i);
 
@@ -432,12 +465,11 @@ int main(int argc, char **argv) {
 
           std::vector<IOWrap::Output3DWrapper *> wraps =
               fullSystem->outputWrapper;
-          delete fullSystem;
 
           for (IOWrap::Output3DWrapper *ow : wraps)
             ow->reset();
 
-          fullSystem = new FullSystem();
+          fullSystem.reset(new FullSystem());
           fullSystem->setGammaFunction(reader->getPhotometricGamma());
           fullSystem->linearizeOperation = (playbackSpeed == 0);
 
@@ -495,7 +527,7 @@ int main(int argc, char **argv) {
     }
   });
 
-  if (viewer != 0)
+  if (viewer)
     viewer->run();
 
   runthread.join();
@@ -505,12 +537,6 @@ int main(int argc, char **argv) {
     delete ow;
   }
 
-  printf("DELETE FULLSYSTEM!\n");
-  delete fullSystem;
-
-  printf("DELETE READER!\n");
-  delete reader;
-
   // shutdown exThread
   exThreadKeepRunning = false;
   exThread.join();
@@ -518,3 +544,5 @@ int main(int argc, char **argv) {
   printf("EXIT NOW!\n");
   return 0;
 }
+} // namespace dso
+int main(int argc, char **argv) { dso::Main(argc, argv); }

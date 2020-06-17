@@ -1,0 +1,17 @@
+%YAML:1.0
+
+images_path: "/Users/xipengw/dataset/dso/sequence_24/images"
+vignette_path: "/Users/xipengw/dataset/dso/sequence_24/vignette.png"
+gamma_calib_path: "/Users/xipengw/dataset/dso/sequence_24/pcalib.txt"
+camera_calib_path: "/Users/xipengw/dataset/dso/sequence_24/camera.txt"
+
+reverse_play: 0
+run_quiet: 1
+start_frame_idx: 0
+end_frame_idx: 100
+load_all_images_once: 0
+
+logging: 0
+disable_display: 0
+multi_threading: 1
+save_debug_images: 0

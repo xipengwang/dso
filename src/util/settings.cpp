@@ -157,7 +157,6 @@ float freeDebugParam3 = 1;
 float freeDebugParam4 = 1;
 float freeDebugParam5 = 1;
 
-bool disableReconfigure = false;
 bool debugSaveImages = false;
 bool multiThreading = true;
 bool disableAllDisplay = false;
