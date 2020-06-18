@@ -198,7 +198,6 @@ void ConfigDsoSettings(const Options &options) {
 // 0 for linearize (play as fast as possible, while sequentializing
 // tracking & mapping). otherwise, factor on timestamps.
 float playbackSpeed = 0;
-bool useSampleOutput = false;
 
 std::atomic<bool> exThreadKeepRunning(true);
 
@@ -274,14 +273,6 @@ void parseArgument(char *arg) {
   float foption;
   char buf[1000];
 
-  if (1 == sscanf(arg, "sampleoutput=%d", &option)) {
-    if (option == 1) {
-      useSampleOutput = true;
-      printf("USING SAMPLE OUTPUT WRAPPER!\n");
-    }
-    return;
-  }
-
   if (1 == sscanf(arg, "preset=%d", &option)) {
     settingsDefault(option);
     return;
@@ -290,26 +281,6 @@ void parseArgument(char *arg) {
   if (1 == sscanf(arg, "speed=%f", &foption)) {
     playbackSpeed = foption;
     printf("PLAYBACK SPEED %f!\n", playbackSpeed);
-    return;
-  }
-
-  if (1 == sscanf(arg, "save=%d", &option)) {
-    if (option == 1) {
-      debugSaveImages = true;
-      if (42 == system("rm -rf images_out"))
-        printf("system call returned 42 - what are the odds?. This is only "
-               "here to shut up the compiler.\n");
-      if (42 == system("mkdir images_out"))
-        printf("system call returned 42 - what are the odds?. This is only "
-               "here to shut up the compiler.\n");
-      if (42 == system("rm -rf images_out"))
-        printf("system call returned 42 - what are the odds?. This is only "
-               "here to shut up the compiler.\n");
-      if (42 == system("mkdir images_out"))
-        printf("system call returned 42 - what are the odds?. This is only "
-               "here to shut up the compiler.\n");
-      printf("SAVE IMAGES!\n");
-    }
     return;
   }
 
@@ -382,10 +353,6 @@ int Main(int argc, char **argv) {
   if (!disableAllDisplay) {
     viewer = new IOWrap::PangolinDSOViewer(wG[0], hG[0], false);
     fullSystem->outputWrapper.push_back(viewer);
-  }
-
-  if (useSampleOutput) {
-    fullSystem->outputWrapper.push_back(new IOWrap::SampleOutputWrapper());
   }
 
   // to make MacOS happy: run this in dedicated thread -- and use this one to
