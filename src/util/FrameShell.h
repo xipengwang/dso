@@ -39,19 +39,23 @@ public:
   SE3 camToTrackingRef;
   FrameShell *trackingRef;
 
-  // constantly adapted.
-  SE3 camToWorld; // Write: TRACKING, while frame is still fresh; MAPPING: only
-                  // when locked [shellPoseMutex].
+  // Constantly adapted.
+  // Write:
+  // TRACKING, while frame is still fresh;
+  // MAPPING: only when locked [shellPoseMutex].
+  SE3 camToWorld;
+  // TODO(xipeng.wang)
   AffLight aff_g2l;
   bool poseValid;
 
+  // TODO(xipeng.wang)
   // statisitcs
   int statistics_outlierResOnThis;
   int statistics_goodResOnThis;
   int marginalizedAt;
   double movedByOpt;
 
-  inline FrameShell() {
+  FrameShell() {
     id = 0;
     poseValid = true;
     camToWorld = SE3();

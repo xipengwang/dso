@@ -97,38 +97,40 @@ struct FrameFramePrecalc {
 
 struct FrameHessian {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+  // TODO(xipeng.wang)
   EFFrame *efFrame;
 
   // constant info & pre-calculated values
-  // DepthImageWrap* frame;
   FrameShell *shell;
 
-  Eigen::Vector3f *dI; // trace, fine tracking. Used for direction select (not
-                       // for gradient histograms etc.)
-  Eigen::Vector3f *
-      dIp[PYR_LEVELS]; // coarse tracking / coarse initializer. NAN in [0] only.
-  float *absSquaredGrad[PYR_LEVELS]; // only used for pixel select (histograms
-                                     // etc.). no NAN.
-
-  int frameID; // incremental ID for keyframes only!
+  // trace, fine tracking. Used for direction select (not
+  // for gradient histograms etc.)
+  Eigen::Vector3f *dI;
+  // coarse tracking / coarse initializer. NAN in [0] only.
+  Eigen::Vector3f *dIp[PYR_LEVELS];
+  // only used for pixel select (histograms etc.). no NAN.
+  float *absSquaredGrad[PYR_LEVELS];
+  // incremental ID for keyframes only!
+  int frameID;
+  // TODO(xipeng.wang)
   static int instanceCounter;
   int idx;
 
   // Photometric Calibration Stuff
-  float frameEnergyTH; // set dynamically depending on tracking residual
+  // set dynamically depending on tracking residual
+  float frameEnergyTH;
   float ab_exposure;
 
   bool flaggedForMarginalization;
-
-  std::vector<PointHessian *> pointHessians; // contains all ACTIVE points.
-  std::vector<PointHessian *>
-      pointHessiansMarginalized; // contains all MARGINALIZED points (= fully
-                                 // marginalized, usually because point went
-                                 // OOB.)
-  std::vector<PointHessian *>
-      pointHessiansOut; // contains all OUTLIER points (= discarded.).
-  std::vector<ImmaturePoint *>
-      immaturePoints; // contains all OUTLIER points (= discarded.).
+  // contains all ACTIVE points.
+  std::vector<PointHessian *> pointHessians;
+  // contains all MARGINALIZED points (= fully
+  // marginalized, usually because point went
+  // OOB.)
+  std::vector<PointHessian *> pointHessiansMarginalized;
+  // contains all OUTLIER points (= discarded.).
+  std::vector<PointHessian *> pointHessiansOut;
+  std::vector<ImmaturePoint *> immaturePoints;
 
   Mat66 nullspaces_pose;
   Mat42 nullspaces_affine;

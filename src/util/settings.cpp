@@ -177,9 +177,8 @@ bool setting_fullResetRequested = false;
 
 bool setting_debugout_runquiet = false;
 
-int sparsityFactor =
-    5; // not actually a setting, only some legacy stuff for coarse initializer.
-
+// not actually a setting, only some legacy stuff for coarse initializer.
+int sparsityFactor = 5;
 void handleKey(char k) {
   char kkk = k;
   switch (kkk) {

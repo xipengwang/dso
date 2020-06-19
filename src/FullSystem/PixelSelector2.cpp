@@ -27,6 +27,7 @@
 
 #include "FullSystem/HessianBlocks.h"
 #include "IOWrapper/ImageDisplay.h"
+#include "IOWrapper/ImageRW.h"
 #include "util/NumType.h"
 #include "util/globalCalib.h"
 #include "util/globalFuncs.h"
@@ -150,31 +151,6 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
   float numWant = density;
   float quotia;
   int idealPotential = currentPotential;
-
-  //	if(setting_pixelSelectionUseFast>0 && allowFast)
-  //	{
-  //		memset(map_out, 0, sizeof(float)*wG[0]*hG[0]);
-  //		std::vector<cv::KeyPoint> pts;
-  //		cv::Mat img8u(hG[0],wG[0],CV_8U);
-  //		for(int i=0;i<wG[0]*hG[0];i++)
-  //		{
-  //			float v = fh->dI[i][0]*0.8;
-  //			img8u.at<uchar>(i) = (!std::isfinite(v) || v>255) ? 255
-  //: v;
-  //		}
-  //		cv::FAST(img8u, pts, setting_pixelSelectionUseFast, true);
-  //		for(unsigned int i=0;i<pts.size();i++)
-  //		{
-  //			int x = pts[i].pt.x+0.5;
-  //			int y = pts[i].pt.y+0.5;
-  //			map_out[x+y*wG[0]]=1;
-  //			numHave++;
-  //		}
-  //
-  //		printf("FAST selection: got %f / %f!\n", numHave, numWant);
-  //		quotia = numWant / numHave;
-  //	}
-  //	else
   {
 
     // the number of selected pixels behaves approximately as
@@ -204,11 +180,6 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
       if (idealPotential >= currentPotential)
         idealPotential = currentPotential - 1;
 
-      //		printf("PixelSelector: have %.2f%%, need %.2f%%.
-      // RESAMPLE with pot %d -> %d.\n",
-      // 100*numHave/(float)(wG[0]*hG[0]), 				100*numWant/(float)(wG[0]*hG[0]),
-      //				currentPotential,
-      //				idealPotential);
       currentPotential = idealPotential;
       return makeMaps(fh, map_out, density, recursionsLeft - 1, plot, thFactor);
     } else if (recursionsLeft > 0 && quotia < 0.25) {
@@ -219,7 +190,8 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
 
       //		printf("PixelSelector: have %.2f%%, need %.2f%%.
       // RESAMPLE with pot %d -> %d.\n",
-      // 100*numHave/(float)(wG[0]*hG[0]), 				100*numWant/(float)(wG[0]*hG[0]),
+      // 100*numHave/(float)(wG[0]*hG[0]),
+      // 100*numWant/(float)(wG[0]*hG[0]),
       //				currentPotential,
       //				idealPotential);
       currentPotential = idealPotential;
@@ -243,15 +215,9 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
     }
   }
 
-  //	printf("PixelSelector: have %.2f%%, need %.2f%%. KEEPCURR with pot %d ->
-  //%d. Subsampled to %.2f%%\n",
-  //100*numHave/(float)(wG[0]*hG[0]), 			100*numWant/(float)(wG[0]*hG[0]),
-  //			currentPotential,
-  //			idealPotential,
-  //			100*numHaveSub/(float)(wG[0]*hG[0]));
   currentPotential = idealPotential;
 
-  if (plot) {
+  if (false && plot) {
     int w = wG[0];
     int h = hG[0];
 
@@ -263,7 +229,7 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
         c = 255;
       img.at(i) = Vec3b(c, c, c);
     }
-    IOWrap::displayImage("Selector Image", &img);
+    // IOWrap::displayImage("Selector Image", &img);
 
     for (int y = 0; y < h; y++)
       for (int x = 0; x < w; x++) {
@@ -275,7 +241,8 @@ int PixelSelector::makeMaps(const FrameHessian *const fh, float *map_out,
         else if (map_out[i] == 4)
           img.setPixelCirc(x, y, Vec3b(0, 0, 255));
       }
-    IOWrap::displayImage("Selector Pixels", &img);
+    // IOWrap::displayImage("Selector Pixels", &img);
+    IOWrap::writeImage("/tmp/selected.png", &img);
   }
 
   return numHaveSub;

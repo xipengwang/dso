@@ -146,8 +146,10 @@ struct AffLight {
   AffLight() : a(0), b(0){};
 
   // Affine Parameters:
-  double a,
-      b; // I_frame = exp(a)*I_global + b. // I_global = exp(-a)*(I_frame - b).
+  // I_frame = exp(a)*I_global + b.
+  // I_global = exp(-a)*(I_frame - b).
+  double a;
+  double b;
 
   static Vec2 fromToVecExposure(float exposureF, float exposureT, AffLight g2F,
                                 AffLight g2T) {
@@ -156,6 +158,13 @@ struct AffLight {
       // printf("got exposure value of 0! please choose the correct model.\n");
       // assert(setting_brightnessTransferFunc < 2);
     }
+
+    // TODO(xipeng.wang)
+    // I_G = exp(-g2F.a) * (I_F - g2F.b) / exposure_F
+    // I_G = exp(-g2T.b) * (I_T - g2T.b) / exposure_T
+    // exp(-g2F.a) * (I_F - g2F.b) * exposure_T / exposure_F =
+    // exp(-g2T.a) * (I_T - g2T.b)
+    // exp(g2T.a - g2F.a) * (I_F - g2F.b) * e_T / e_F + g2T.b = I_T
 
     double a = exp(g2T.a - g2F.a) * exposureT / exposureF;
     double b = g2T.b - a * g2F.b;

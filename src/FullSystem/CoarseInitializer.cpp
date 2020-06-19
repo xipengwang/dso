@@ -700,12 +700,14 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
   for (int lvl = 0; lvl < pyrLevelsUsed; lvl++) {
     sel.currentPotential = 3;
     int npts;
-    if (lvl == 0)
+    if (lvl == 0) {
+      // TODO(xipeng.wang) Is here w[0] or w[lvl]?
       npts = sel.makeMaps(firstFrame, statusMap, densities[lvl] * w[0] * h[0],
-                          1, false, 2);
-    else
+                          1, true, 2);
+    } else {
       npts = makePixelStatus(firstFrame->dIp[lvl], statusMapB, w[lvl], h[lvl],
                              densities[lvl] * w[0] * h[0]);
+    }
 
     if (points[lvl] != 0)
       delete[] points[lvl];
@@ -739,11 +741,6 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
             float absgrad = cpt[dx + dy * w[lvl]].tail<2>().squaredNorm();
             sumGrad2 += absgrad;
           }
-
-          //				float gth = setting_outlierTH *
-          //(sqrtf(sumGrad2)+setting_outlierTHSumComponent); 				pl[nl].outlierTH =
-          //patternNum*gth*gth;
-          //
 
           pl[nl].outlierTH = patternNum * setting_outlierTH;
 

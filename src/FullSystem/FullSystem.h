@@ -140,6 +140,7 @@ public:
 
   std::vector<IOWrap::Output3DWrapper *> outputWrapper;
 
+  // Camera tracking is lost.
   bool isLost;
   bool initFailed;
   bool initialized;

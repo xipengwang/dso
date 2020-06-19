@@ -542,9 +542,9 @@ void FullSystem::traceNewCoarse(FrameHessian *fh) {
   }
   //	printf("ADD: TRACE: %'d points. %'d (%.0f%%) good. %'d (%.0f%%) skip.
   //%'d (%.0f%%) badcond. %'d (%.0f%%) oob. %'d (%.0f%%) out. %'d (%.0f%%)
-  // uninit.\n", 			trace_total, 			trace_good,
+  // uninit.\n", 			trace_total, trace_good,
   // 100*trace_good/(float)trace_total, 			trace_skip,
-  //100*trace_skip/(float)trace_total, 			trace_badcondition,
+  // 100*trace_skip/(float)trace_total, trace_badcondition,
   // 100*trace_badcondition/(float)trace_total, trace_oob,
   // 100*trace_oob/(float)trace_total, 			trace_out,
   // 100*trace_out/(float)trace_total, 			trace_uninitialized,
@@ -675,7 +675,7 @@ void FullSystem::activatePointsMT() {
 
   //	printf("ACTIVATE: %d. (del %d, notReady %d, marg %d, good %d, marg-skip
   //%d)\n", 			(int)toOptimize.size(), immature_deleted,
-  //immature_notReady, immature_needMarg, immature_want, immature_margskip);
+  // immature_notReady, immature_needMarg, immature_want, immature_margskip);
 
   std::vector<PointHessian *> optimized;
   optimized.resize(toOptimize.size());
@@ -807,7 +807,6 @@ void FullSystem::flagPointsForRemoval() {
 }
 
 void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
-
   if (isLost)
     return;
   std::unique_lock<std::mutex> lock(trackMutex);
@@ -816,8 +815,7 @@ void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
   // =========================
   FrameHessian *fh = new FrameHessian();
   FrameShell *shell = new FrameShell();
-  shell->camToWorld =
-      SE3(); // no lock required, as fh is not used anywhere yet.
+  shell->camToWorld = SE3();
   shell->aff_g2l = AffLight(0, 0);
   shell->marginalizedAt = shell->id = allFrameHistory.size();
   shell->timestamp = image->timestamp;
@@ -832,14 +830,11 @@ void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
 
   if (!initialized) {
     // use initializer!
-    if (coarseInitializer->frameID <
-        0) // first frame set. fh is kept by coarseInitializer.
-    {
-
+    // first frame set. fh is kept by coarseInitializer.
+    if (coarseInitializer->frameID < 0) {
       coarseInitializer->setFirst(&Hcalib, fh);
-    } else if (coarseInitializer->trackFrame(fh, outputWrapper)) // if SNAPPED
-    {
-
+    } else if (coarseInitializer->trackFrame(fh, outputWrapper)) {
+      // if SNAPPED
       initializeFromInitializer(fh);
       lock.unlock();
       deliverTrackedFrame(fh, true);
@@ -849,8 +844,8 @@ void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
       delete fh;
     }
     return;
-  } else // do front-end operation.
-  {
+  } else {
+    /// do front-end operation.
     // =========================== SWAP tracking reference?.
     // =========================
     if (coarseTracker_forNewKF->refFrameID > coarseTracker->refFrameID) {
