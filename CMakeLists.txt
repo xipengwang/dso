@@ -93,21 +93,11 @@ else ()
 	set(HAS_OPENCV 0)
 endif ()
 
-# decide if we have ziplib.
-if (LIBZIP_LIBRARY)
-	message("--- found ziplib (${LIBZIP_VERSION}), compiling with zip capability.")
-	add_definitions(-DHAS_ZIPLIB=1)
-	include_directories( ${LIBZIP_INCLUDE_DIR_ZIP} ${LIBZIP_INCLUDE_DIR_ZIPCONF} )
-else()
-	message("--- not found ziplib (${LIBZIP_LIBRARY}), compiling without zip capability.")
-	set(LIBZIP_LIBRARY "")
-endif()
-
 # compile main library.
 include_directories( ${CSPARSE_INCLUDE_DIR} ${CHOLMOD_INCLUDE_DIR})
 add_library(dso SHARED
   ${dso_SOURCE_FILES} ${dso_opencv_SOURCE_FILES} ${dso_pangolin_SOURCE_FILES})
-target_link_libraries(dso PUBLIC ${CSPARSE_LIBRARY} ${LIBZIP_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(dso PUBLIC ${CSPARSE_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
 
 # set_property( TARGET dso APPEND_STRING PROPERTY COMPILE_FLAGS -Wall )
 
@@ -115,7 +105,7 @@ target_link_libraries(dso PUBLIC ${CSPARSE_LIBRARY} ${LIBZIP_LIBRARY} ${Pangolin
 if (OpenCV_FOUND AND Pangolin_FOUND)
  	message("--- compiling dso_dataset.")
   add_executable(dso_dataset ${PROJECT_SOURCE_DIR}/src/main_dso_pangolin.cpp )
-  target_link_libraries(dso_dataset dso ${CSPARSE_LIBRARY} ${LIBZIP_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
+  target_link_libraries(dso_dataset dso ${CSPARSE_LIBRARY} ${Pangolin_LIBRARIES} ${OpenCV_LIBS})
 else()
  	message("--- not building dso_dataset, since either don't have openCV or Pangolin.")
 endif()

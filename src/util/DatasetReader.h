@@ -34,10 +34,6 @@
 #include "IOWrapper/ImageRW.h"
 #include "util/Undistort.h"
 
-#if HAS_ZIPLIB
-#include "zip.h"
-#endif
-
 using namespace dso;
 
 inline int getdir(std::string dir, std::vector<std::string> &files) {
@@ -92,38 +88,11 @@ public:
     this->path = path;
     this->calibfile = calibFile;
 
-#if HAS_ZIPLIB
-    ziparchive = 0;
-    databuffer = 0;
-#endif
-
     isZipped = (path.length() > 4 && path.substr(path.length() - 4) == ".zip");
 
     if (isZipped) {
-#if HAS_ZIPLIB
-      int ziperror = 0;
-      ziparchive = zip_open(path.c_str(), ZIP_RDONLY, &ziperror);
-      if (ziperror != 0) {
-        printf("ERROR %d reading archive %s!\n", ziperror, path.c_str());
-        exit(1);
-      }
-
-      files.clear();
-      int numEntries = zip_get_num_entries(ziparchive, 0);
-      for (int k = 0; k < numEntries; k++) {
-        const char *name = zip_get_name(ziparchive, k, ZIP_FL_ENC_STRICT);
-        std::string nstr = std::string(name);
-        if (nstr == "." || nstr == "..")
-          continue;
-        files.push_back(name);
-      }
-
-      printf("got %d entries and %d files!\n", numEntries, (int)files.size());
-      std::sort(files.begin(), files.end());
-#else
-      printf("ERROR: cannot read .zip archive, as compile without ziplib!\n");
+      printf("ERROR: cannot read .zip archive\n");
       exit(1);
-#endif
     } else
       getdir(path, files);
 
@@ -140,16 +109,7 @@ public:
     printf("ImageFolderReader: got %d files in %s!\n", (int)files.size(),
            path.c_str());
   }
-  ~ImageFolderReader() {
-#if HAS_ZIPLIB
-    if (ziparchive != 0)
-      zip_close(ziparchive);
-    if (databuffer != 0)
-      delete databuffer;
-#endif
-
-    delete undistort;
-  };
+  ~ImageFolderReader() { delete undistort; };
 
   Eigen::VectorXf getOriginalCalib() {
     return undistort->getOriginalParameter().cast<float>();
@@ -206,34 +166,8 @@ private:
       // CHANGE FOR ZIP FILE
       return IOWrap::readImageBW_8U(files[id]);
     } else {
-#if HAS_ZIPLIB
-      if (databuffer == 0)
-        databuffer = new char[widthOrg * heightOrg * 6 + 10000];
-      zip_file_t *fle = zip_fopen(ziparchive, files[id].c_str(), 0);
-      long readbytes =
-          zip_fread(fle, databuffer, (long)widthOrg * heightOrg * 6 + 10000);
-
-      if (readbytes > (long)widthOrg * heightOrg * 6) {
-        printf("read %ld/%ld bytes for file %s. increase buffer!!\n", readbytes,
-               (long)widthOrg * heightOrg * 6 + 10000, files[id].c_str());
-        delete[] databuffer;
-        databuffer = new char[(long)widthOrg * heightOrg * 30];
-        fle = zip_fopen(ziparchive, files[id].c_str(), 0);
-        readbytes =
-            zip_fread(fle, databuffer, (long)widthOrg * heightOrg * 30 + 10000);
-
-        if (readbytes > (long)widthOrg * heightOrg * 30) {
-          printf("buffer still to small (read %ld/%ld). abort.\n", readbytes,
-                 (long)widthOrg * heightOrg * 30 + 10000);
-          exit(1);
-        }
-      }
-
-      return IOWrap::readStreamBW_8U(databuffer, readbytes);
-#else
       printf("ERROR: cannot read .zip archive, as compile without ziplib!\n");
       exit(1);
-#endif
     }
   }
 
@@ -322,9 +256,4 @@ private:
   std::string calibfile;
 
   bool isZipped;
-
-#if HAS_ZIPLIB
-  zip_t *ziparchive;
-  char *databuffer;
-#endif
 };
