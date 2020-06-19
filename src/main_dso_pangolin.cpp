@@ -100,7 +100,15 @@ static const char *kLoadAllImagesOnce = "load_all_images_once";
 static const char *kLogging = "logging";
 static const char *kDisableDisplay = "disable_display";
 static const char *kMultiThreading = "multi_threading";
-static const char *kSaveDebugImage = "save_debug_images";
+static const char *kMode = "mode";
+static const char *kPlaybackSpeed = "playback_speed";
+
+static const char *kDesiredImmatureDensity = "desired_immature_density";
+static const char *kDesiredPointDensity = "desired_point_density";
+static const char *kMinFrames = "min_frames";
+static const char *kMaxFrames = "max_frames";
+static const char *kMaxOptIteration = "max_opt_iterations";
+static const char *kMinOptIteration = "min_opt_iterations";
 
 struct Options {
   std::string images_path = "";
@@ -119,6 +127,17 @@ struct Options {
   bool setting_log_stuff = false;
   bool setting_disable_display = false;
   bool setting_multi_threading = true;
+  int setting_desiredImmatureDensity = 1500;
+  int setting_desiredPointDensity = 2000;
+  int setting_minFrames = 5;
+  int setting_maxFrames = 7;
+  int setting_maxOptIterations = 6;
+  int setting_minOptIterations = 1;
+
+  int mode = 0;
+  // 0 for linearize (play as fast as possible, while sequentializing
+  // tracking & mapping). otherwise, factor on timestamps.
+  float playback_speed = 0.;
 };
 
 Options ParseConfig(const std::string &config_path) {
@@ -182,6 +201,40 @@ Options ParseConfig(const std::string &config_path) {
     options.setting_multi_threading =
         static_cast<bool>(maybe_multi_threading.value());
   }
+  const auto maybe_mode = Config::MaybeGet<int>(kMode);
+  if (maybe_mode.has_value()) {
+    options.mode = maybe_mode.value();
+  }
+  const auto maybe_speed = Config::MaybeGet<float>(kPlaybackSpeed);
+  if (maybe_speed.has_value()) {
+    options.playback_speed = maybe_speed.value();
+  }
+  const auto maybe_immature_density =
+      Config::MaybeGet<int>(kDesiredImmatureDensity);
+  if (maybe_immature_density.has_value()) {
+    options.setting_desiredImmatureDensity = maybe_immature_density.value();
+  }
+  const auto maybe_point_density = Config::MaybeGet<int>(kDesiredPointDensity);
+  if (maybe_point_density.has_value()) {
+    options.setting_desiredPointDensity = maybe_point_density.value();
+  }
+  const auto maybe_min_frames = Config::MaybeGet<int>(kMinFrames);
+  if (maybe_min_frames.has_value()) {
+    options.setting_minFrames = maybe_min_frames.value();
+  }
+  const auto maybe_max_frames = Config::MaybeGet<int>(kMaxFrames);
+  if (maybe_max_frames.has_value()) {
+    options.setting_maxFrames = maybe_max_frames.value();
+  }
+  const auto maybe_min_opt_iters = Config::MaybeGet<int>(kMinOptIteration);
+  if (maybe_min_opt_iters.has_value()) {
+    options.setting_minOptIterations = maybe_min_opt_iters.value();
+  }
+  const auto maybe_max_opt_iters = Config::MaybeGet<int>(kMaxOptIteration);
+  if (maybe_max_opt_iters.has_value()) {
+    options.setting_maxOptIterations = maybe_max_opt_iters.value();
+  }
+
   return options;
 }
 
@@ -191,17 +244,35 @@ void ConfigDsoSettings(const Options &options) {
   setting_logStuff = options.setting_log_stuff;
   disableAllDisplay = options.setting_disable_display;
   multiThreading = options.setting_multi_threading;
+
+  if (options.mode == 0) {
+    printf("PHOTOMETRIC MODE WITH CALIBRATION!\n");
+  }
+  if (options.mode == 1) {
+    printf("PHOTOMETRIC MODE WITHOUT CALIBRATION!\n");
+    setting_photometricCalibration = 0;
+    setting_affineOptModeA = 0; //-1: fix. >=0: optimize (with prior, if > 0).
+    setting_affineOptModeB = 0; //-1: fix. >=0: optimize (with prior, if > 0).
+  }
+  if (options.mode == 2) {
+    printf("PHOTOMETRIC MODE WITH PERFECT IMAGES!\n");
+    setting_photometricCalibration = 0;
+    setting_affineOptModeA = -1; //-1: fix. >=0: optimize (with prior, if > 0).
+    setting_affineOptModeB = -1; //-1: fix. >=0: optimize (with prior, if > 0).
+    setting_minGradHistAdd = 3;
+  }
+
+  setting_desiredImmatureDensity = options.setting_desiredImmatureDensity;
+  setting_desiredPointDensity = options.setting_desiredPointDensity;
+  setting_minFrames = options.setting_minFrames;
+  setting_maxFrames = options.setting_maxFrames;
+  setting_maxOptIterations = options.setting_maxOptIterations;
+  setting_minOptIterations = options.setting_minOptIterations;
 }
 
 } // namespace
 
-// 0 for linearize (play as fast as possible, while sequentializing
-// tracking & mapping). otherwise, factor on timestamps.
-float playbackSpeed = 0;
-
 std::atomic<bool> exThreadKeepRunning(true);
-
-int mode = 0;
 
 void my_exit_handler(int s) {
   printf("Caught signal %d\n", s);
@@ -220,101 +291,8 @@ void exitThread() {
   }
 }
 
-void settingsDefault(int preset) {
-  printf("\n=============== PRESET Settings: ===============\n");
-  if (preset == 0 || preset == 1) {
-    printf("DEFAULT settings:\n"
-           "- %s real-time enforcing\n"
-           "- 2000 active points\n"
-           "- 5-7 active frames\n"
-           "- 1-6 LM iteration each KF\n"
-           "- original image resolution\n",
-           preset == 0 ? "no " : "1x");
-
-    playbackSpeed = (preset == 0 ? 0 : 1);
-    setting_desiredImmatureDensity = 1500;
-    setting_desiredPointDensity = 2000;
-    setting_minFrames = 5;
-    setting_maxFrames = 7;
-    setting_maxOptIterations = 6;
-    setting_minOptIterations = 1;
-
-    setting_logStuff = false;
-  }
-
-  if (preset == 2 || preset == 3) {
-    printf("FAST settings:\n"
-           "- %s real-time enforcing\n"
-           "- 800 active points\n"
-           "- 4-6 active frames\n"
-           "- 1-4 LM iteration each KF\n"
-           "- 424 x 320 image resolution\n",
-           preset == 0 ? "no " : "5x");
-
-    playbackSpeed = (preset == 2 ? 0 : 5);
-    setting_desiredImmatureDensity = 600;
-    setting_desiredPointDensity = 800;
-    setting_minFrames = 4;
-    setting_maxFrames = 6;
-    setting_maxOptIterations = 4;
-    setting_minOptIterations = 1;
-
-    benchmarkSetting_width = 424;
-    benchmarkSetting_height = 320;
-
-    setting_logStuff = false;
-  }
-
-  printf("==============================================\n");
-}
-
-void parseArgument(char *arg) {
-  int option;
-  float foption;
-  char buf[1000];
-
-  if (1 == sscanf(arg, "preset=%d", &option)) {
-    settingsDefault(option);
-    return;
-  }
-
-  if (1 == sscanf(arg, "speed=%f", &foption)) {
-    playbackSpeed = foption;
-    printf("PLAYBACK SPEED %f!\n", playbackSpeed);
-    return;
-  }
-
-  if (1 == sscanf(arg, "mode=%d", &option)) {
-
-    mode = option;
-    if (option == 0) {
-      printf("PHOTOMETRIC MODE WITH CALIBRATION!\n");
-    }
-    if (option == 1) {
-      printf("PHOTOMETRIC MODE WITHOUT CALIBRATION!\n");
-      setting_photometricCalibration = 0;
-      setting_affineOptModeA = 0; //-1: fix. >=0: optimize (with prior, if > 0).
-      setting_affineOptModeB = 0; //-1: fix. >=0: optimize (with prior, if > 0).
-    }
-    if (option == 2) {
-      printf("PHOTOMETRIC MODE WITH PERFECT IMAGES!\n");
-      setting_photometricCalibration = 0;
-      setting_affineOptModeA =
-          -1; //-1: fix. >=0: optimize (with prior, if > 0).
-      setting_affineOptModeB =
-          -1; //-1: fix. >=0: optimize (with prior, if > 0).
-      setting_minGradHistAdd = 3;
-    }
-    return;
-  }
-
-  printf("could not parse argument \"%s\"!!!!\n", arg);
-}
-
 namespace dso {
 int Main(int argc, char **argv) {
-  for (int i = 1; i < argc; i++)
-    parseArgument(argv[i]);
   const auto options = ParseConfig(argv[1]);
   ConfigDsoSettings(options);
 
@@ -330,7 +308,7 @@ int Main(int argc, char **argv) {
   if (setting_photometricCalibration > 0 &&
       reader->getPhotometricGamma() == 0) {
     std::cerr << "ERROR: don't have photometric calibration. "
-              << "Need to use command line options mode = 1 or mode = 2 \n ";
+              << "Need to use mode = 1 or mode = 2 \n ";
     exit(1);
   }
 
@@ -347,7 +325,7 @@ int Main(int argc, char **argv) {
 
   std::unique_ptr<FullSystem> fullSystem(new FullSystem());
   fullSystem->setGammaFunction(reader->getPhotometricGamma());
-  fullSystem->linearizeOperation = (playbackSpeed == 0);
+  fullSystem->linearizeOperation = (options.playback_speed == 0);
 
   IOWrap::PangolinDSOViewer *viewer = nullptr;
   if (!disableAllDisplay) {
@@ -370,7 +348,7 @@ int Main(int argc, char **argv) {
         double tsThis = reader->getTimestamp(idsToPlay[idsToPlay.size() - 1]);
         double tsPrev = reader->getTimestamp(idsToPlay[idsToPlay.size() - 2]);
         timesToPlayAt.push_back(timesToPlayAt.back() +
-                                fabs(tsThis - tsPrev) / playbackSpeed);
+                                fabs(tsThis - tsPrev) / options.playback_speed);
       }
     }
 
@@ -405,7 +383,7 @@ int Main(int argc, char **argv) {
         img = reader->getImage(i);
 
       bool skipFrame = false;
-      if (playbackSpeed != 0) {
+      if (options.playback_speed != 0) {
         struct timeval tv_now;
         gettimeofday(&tv_now, NULL);
         double sSinceStart =
@@ -438,7 +416,7 @@ int Main(int argc, char **argv) {
 
           fullSystem.reset(new FullSystem());
           fullSystem->setGammaFunction(reader->getPhotometricGamma());
-          fullSystem->linearizeOperation = (playbackSpeed == 0);
+          fullSystem->linearizeOperation = (options.playback_speed == 0);
 
           fullSystem->outputWrapper = wraps;
 

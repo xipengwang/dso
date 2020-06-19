@@ -8,10 +8,23 @@ camera_calib_path: "/Users/xipengw/dataset/dso/sequence_24/camera.txt"
 reverse_play: 0
 run_quiet: 1
 start_frame_idx: 0
-end_frame_idx: 100
+end_frame_idx: 10000
 load_all_images_once: 0
 
 logging: 0
 disable_display: 0
 multi_threading: 1
-save_debug_images: 0
+#mode=0 use iff a photometric calibration exists (e.g. TUM monoVO dataset).
+#mode=1 use iff NO photometric calibration exists (e.g. ETH EuRoC MAV dataset).
+#mode=2 use iff images are not photometrically distorted (e.g. synthetic datasets).
+mode: 0
+# 0 for linearize (play as fast as possible, while sequentializing
+# tracking & mapping). otherwise, factor on timestamps.
+playback_speed: 0
+
+desired_immature_density: 1000
+desired_point_density: 1000
+min_frames: 5
+max_frames: 7
+max_opt_iterations: 1
+min_opt_iterations: 6
