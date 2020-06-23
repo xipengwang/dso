@@ -48,6 +48,7 @@ public:
   float idepth_new;
   Vec2f energy_new;
 
+  // TODO(xipeng.wang): What is this?
   float iR;
   float iRSumNum;
 
@@ -65,7 +66,11 @@ public:
   int neighbours[10];
   float neighboursDist[10];
 
+  // Level0: 1- point from level 0, 2- point from level 1, 3- point from level 2
+  // Level 1-: 1
   float my_type;
+  // Threshold for outlier rejection based gradient thresholds
+  // equal to patternNum * setting_outlierTH;
   float outlierTH;
 };
 
@@ -87,6 +92,7 @@ public:
   Pnt *points[PYR_LEVELS];
   int numPoints[PYR_LEVELS];
   AffLight thisToNext_aff;
+  // TODO(xipeng.wang)
   SE3 thisToNext;
 
   FrameHessian *firstFrame;
@@ -124,8 +130,7 @@ private:
   Accumulator9 acc9;
   Accumulator9 acc9SC;
 
-  Vec3f dGrads[PYR_LEVELS];
-
+  // TODO(xipeng.wang)
   float alphaK;
   float alphaW;
   float regWeight;

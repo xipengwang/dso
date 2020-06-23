@@ -46,7 +46,7 @@ inline int gridMaxSelection(Eigen::Vector3f *grads, bool *map_out, int w, int h,
       float bestXX = 0, bestYY = 0, bestXY = 0, bestYX = 0;
 
       Eigen::Vector3f *grads0 = grads + x + y * w;
-      for (int dx = 0; dx < pot; dx++)
+      for (int dx = 0; dx < pot; dx++) {
         for (int dy = 0; dy < pot; dy++) {
           int idx = dx + dy * w;
           Eigen::Vector3f g = grads0[idx];
@@ -79,6 +79,7 @@ inline int gridMaxSelection(Eigen::Vector3f *grads, bool *map_out, int w, int h,
             }
           }
         }
+      }
 
       bool *map0 = map_out + x + y * w;
 
@@ -225,6 +226,10 @@ inline int makePixelStatus(Eigen::Vector3f *grads, bool *map, int w, int h,
 
   float quotia = numGoodPoints / (float)(desiredDensity);
 
+  // If number of good points is less than the desired number,
+  // quotia < 1, the sparsity factor will be smaller, then the pot to check
+  // good points with large gradients will be smaller, then potentially we will
+  // have more points next time.
   int newSparsity = (sparsityFactor * sqrtf(quotia)) + 0.7f;
 
   if (newSparsity < 1)

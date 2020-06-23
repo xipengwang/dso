@@ -79,12 +79,13 @@ bool CoarseInitializer::trackFrame(
   for (IOWrap::Output3DWrapper *ow : wraps)
     ow->pushLiveFrame(newFrameHessian);
 
+  // Max iterations for each image level:
   int maxIterations[] = {5, 5, 10, 30, 50};
 
-  alphaK = 2.5 * 2.5; //*freeDebugParam1*freeDebugParam1;
-  alphaW = 150 * 150; //*freeDebugParam2*freeDebugParam2;
-  regWeight = 0.8;    //*freeDebugParam4;
-  couplingWeight = 1; //*freeDebugParam5;
+  alphaK = 2.5 * 2.5;
+  alphaW = 150 * 150;
+  regWeight = 0.8;
+  couplingWeight = 1;
 
   if (!snapped) {
     thisToNext.translation().setZero();
@@ -110,8 +111,9 @@ bool CoarseInitializer::trackFrame(
   Vec3f latestRes = Vec3f::Zero();
   for (int lvl = pyrLevelsUsed - 1; lvl >= 0; lvl--) {
 
-    if (lvl < pyrLevelsUsed - 1)
+    if (lvl < pyrLevelsUsed - 1) {
       propagateDown(lvl + 1);
+    }
 
     Mat88f H, Hsc;
     Vec8f b, bsc;
@@ -352,6 +354,9 @@ Vec3f CoarseInitializer::calcResAndGS(int lvl, Mat88f &H_out, Vec8f &b_out,
 
       Vec3f pt =
           RKi * Vec3f(point->u + dx, point->v + dy, 1) + t * point->idepth_new;
+      // double Z = 1 / point->idepth_new
+      // pt = Rki * Vec3f(point->u + dx, point->v + dy, 1) * Z + t
+      // new_idepth = 1 / pt[2]
       float u = pt[0] / pt[2];
       float v = pt[1] / pt[2];
       float Ku = fxl * u + cxl;
@@ -364,9 +369,6 @@ Vec3f CoarseInitializer::calcResAndGS(int lvl, Mat88f &H_out, Vec8f &b_out,
       }
 
       Vec3f hitColor = getInterpolatedElement33(colorNew, Ku, Kv, wl);
-      // Vec3f hitColor = getInterpolatedElement33BiCub(colorNew, Ku, Kv, wl);
-
-      // float rlR = colorRef[point->u+dx + (point->v+dy) * wl][0];
       float rlR =
           getInterpolatedElement31(colorRef, point->u + dx, point->v + dy, wl);
 
@@ -375,7 +377,7 @@ Vec3f CoarseInitializer::calcResAndGS(int lvl, Mat88f &H_out, Vec8f &b_out,
         break;
       }
 
-      float residual = hitColor[0] - r2new_aff[0] * rlR - r2new_aff[1];
+      float residual = hitColor[0] - (r2new_aff[0] * rlR + r2new_aff[1]);
       float hw = fabs(residual) < setting_huberTH
                      ? 1
                      : setting_huberTH / fabs(residual);
@@ -429,7 +431,8 @@ Vec3f CoarseInitializer::calcResAndGS(int lvl, Mat88f &H_out, Vec8f &b_out,
     point->energy_new[0] = energy;
 
     // update Hessian matrix.
-    for (int i = 0; i + 3 < patternNum; i += 4)
+    for (int i = 0; i + 3 < patternNum; i += 4) {
+
       acc9.updateSSE(_mm_load_ps(((float *)(&dp0)) + i),
                      _mm_load_ps(((float *)(&dp1)) + i),
                      _mm_load_ps(((float *)(&dp2)) + i),
@@ -439,11 +442,12 @@ Vec3f CoarseInitializer::calcResAndGS(int lvl, Mat88f &H_out, Vec8f &b_out,
                      _mm_load_ps(((float *)(&dp6)) + i),
                      _mm_load_ps(((float *)(&dp7)) + i),
                      _mm_load_ps(((float *)(&r)) + i));
-
-    for (int i = ((patternNum >> 2) << 2); i < patternNum; i++)
+    }
+    for (int i = ((patternNum >> 2) << 2); i < patternNum; i++) {
       acc9.updateSingle((float)dp0[i], (float)dp1[i], (float)dp2[i],
                         (float)dp3[i], (float)dp4[i], (float)dp5[i],
                         (float)dp6[i], (float)dp7[i], (float)r[i]);
+    }
   }
 
   E.finish();
@@ -592,6 +596,7 @@ void CoarseInitializer::optReg(int lvl) {
     }
 
     if (nnn > 2) {
+      // Use median to re-weights
       std::nth_element(idnn, idnn + nnn / 2, idnn + nnn);
       point->iR = (1 - regWeight) * point->idepth + regWeight * idnn[nnn / 2];
     }
@@ -702,6 +707,8 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
     int npts;
     if (lvl == 0) {
       // TODO(xipeng.wang) Is here w[0] or w[lvl]?
+      // Select points. statusMap has 1, 2, 4 showing points from level 0, 1,
+      // or 2.
       npts = sel.makeMaps(firstFrame, statusMap, densities[lvl] * w[0] * h[0],
                           1, true, 2);
     } else {
@@ -717,12 +724,12 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
     int wl = w[lvl], hl = h[lvl];
     Pnt *pl = points[lvl];
     int nl = 0;
-    for (int y = patternPadding + 1; y < hl - patternPadding - 2; y++)
+    for (int y = patternPadding + 1; y < hl - patternPadding - 2; y++) {
       for (int x = patternPadding + 1; x < wl - patternPadding - 2; x++) {
-        // if(x==2) printf("y=%d!\n",y);
         if ((lvl != 0 && statusMapB[x + y * wl]) ||
             (lvl == 0 && statusMap[x + y * wl] != 0)) {
-          // assert(patternNum==9);
+          // If point are selected points.
+          // TODO(xipeng.wang) Not sure why adding 0.1 here.
           pl[nl].u = x + 0.1;
           pl[nl].v = y + 0.1;
           pl[nl].idepth = 1;
@@ -733,6 +740,7 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
           pl[nl].lastHessian_new = 0;
           pl[nl].my_type = (lvl != 0) ? 1 : statusMap[x + y * wl];
 
+          // Get gradient (px, dx, dy)
           Eigen::Vector3f *cpt = firstFrame->dIp[lvl] + x + y * w[lvl];
           float sumGrad2 = 0;
           for (int idx = 0; idx < patternNum; idx++) {
@@ -748,7 +756,7 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
           assert(nl <= npts);
         }
       }
-
+    }
     numPoints[lvl] = nl;
   }
   delete[] statusMap;
@@ -759,9 +767,6 @@ void CoarseInitializer::setFirst(CalibHessian *HCalib,
   thisToNext = SE3();
   snapped = false;
   frameID = snappedAt = 0;
-
-  for (int i = 0; i < pyrLevelsUsed; i++)
-    dGrads[i].setZero();
 }
 
 void CoarseInitializer::resetPoints(int lvl) {

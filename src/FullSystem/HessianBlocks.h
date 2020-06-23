@@ -105,8 +105,10 @@ struct FrameHessian {
 
   // trace, fine tracking. Used for direction select (not
   // for gradient histograms etc.)
+  // dI == dIp[0]
   Eigen::Vector3f *dI;
   // coarse tracking / coarse initializer. NAN in [0] only.
+  // 3f: (pixel, dx, dy)
   Eigen::Vector3f *dIp[PYR_LEVELS];
   // only used for pixel select (histograms etc.). no NAN.
   float *absSquaredGrad[PYR_LEVELS];
